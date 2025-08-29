@@ -1,0 +1,2 @@
+# This file ensures the priv directory exists in git
+# The priv directory is used for static assets and other private files

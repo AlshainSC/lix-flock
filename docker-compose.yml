@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  lix-flock:
+    build: .
+    ports:
+      - "4000:4000"
+    environment:
+      - MIX_ENV=prod
+      - PORT=4000
+      - SECRET_KEY_BASE=your_secret_key_base_here_change_in_production
+    volumes:
+      - ./config:/app/config:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Optional: Add InfluxDB for metrics storage
+  influxdb:
+    image: influxdb:2.7
+    ports:
+      - "8086:8086"
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=password123
+      - DOCKER_INFLUXDB_INIT_ORG=lix-flock
+      - DOCKER_INFLUXDB_INIT_BUCKET=drone-metrics
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+    restart: unless-stopped
+
+  # Optional: Add Grafana for advanced metrics visualization
+  grafana:
+    image: grafana/grafana:10.2.0
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+    volumes:
+      - grafana_data:/var/lib/grafana
+    restart: unless-stopped
+    depends_on:
+      - influxdb
+
+volumes:
+  influxdb_data:
+  grafana_data:

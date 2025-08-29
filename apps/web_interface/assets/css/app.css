@@ -1,0 +1,60 @@
+@import "tailwindcss/base";
+@import "tailwindcss/components";
+@import "tailwindcss/utilities";
+
+/* Custom styles for the drone swarm interface */
+.drone-canvas {
+  background: radial-gradient(circle at 50% 50%, #1f2937 0%, #111827 100%);
+}
+
+.drone-marker {
+  transition: all 0.1s ease-in-out;
+}
+
+.drone-marker:hover {
+  transform: scale(1.2);
+}
+
+.metrics-card {
+  backdrop-filter: blur(10px);
+  background: rgba(31, 41, 55, 0.8);
+}
+
+.status-indicator {
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Loading animations */
+.loading-spinner {
+  border: 2px solid #374151;
+  border-top: 2px solid #3b82f6;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Real-time data visualization */
+.data-stream {
+  background: linear-gradient(90deg, transparent, #3b82f6, transparent);
+  animation: stream 2s linear infinite;
+}
+
+@keyframes stream {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}

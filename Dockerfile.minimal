@@ -1,0 +1,74 @@
+# Minimal Dockerfile for testing core functionality without web assets
+FROM hexpm/elixir:1.15.7-erlang-26.1.2-debian-bullseye-20231009-slim AS builder
+
+# Install build dependencies
+RUN apt-get update -y && apt-get install -y build-essential git curl \
+    && apt-get clean && rm -f /var/lib/apt/lists/*_*
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Prepare build dir
+WORKDIR /app
+
+# Install hex + rebar
+RUN mix local.hex --force && \
+    mix local.rebar --force
+
+# Set build ENV
+ENV MIX_ENV="prod"
+
+# Install mix dependencies
+COPY mix.exs ./
+COPY apps/drone_coordinator/mix.exs apps/drone_coordinator/
+COPY apps/web_interface/mix.exs apps/web_interface/
+RUN mix deps.get --only $MIX_ENV
+
+# Copy compile-time config files
+COPY config config
+RUN mix deps.compile
+
+# Copy native Rust code and build
+COPY native native
+WORKDIR /app/native/sensor_processor
+RUN cargo build --release
+WORKDIR /app
+
+# Copy application code
+COPY apps apps
+
+# Create priv directory if it doesn't exist
+RUN mkdir -p priv
+
+# Compile the release (skip assets for now)
+RUN mix compile
+
+# Copy runtime config
+COPY config/runtime.exs config/
+
+# Build the release
+RUN mix release
+
+# Start a new build stage for the runtime image
+FROM debian:bullseye-20231009-slim AS runner
+
+RUN apt-get update -y && apt-get install -y libstdc++6 openssl libncurses5 locales \
+  && apt-get clean && rm -f /var/lib/apt/lists/*_*
+
+# Set the locale
+RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
+
+ENV LANG en_US.UTF-8
+ENV LANGUAGE en_US:en
+ENV LC_ALL en_US.UTF-8
+
+WORKDIR "/app"
+RUN chown nobody /app
+
+# Only copy the final release from the build stage
+COPY --from=builder --chown=nobody:root /app/_build/prod/rel/lix_flock ./
+
+USER nobody
+
+CMD ["/app/bin/lix_flock", "start"]

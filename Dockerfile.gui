@@ -1,0 +1,81 @@
+# Multi-stage build for Lix-Flock with GUI
+FROM hexpm/elixir:1.15.7-erlang-26.1.2-debian-bullseye-20231009-slim as builder
+
+# Install build dependencies
+RUN apt-get update -y && apt-get install -y build-essential git curl \
+    && apt-get clean && rm -f /var/lib/apt/lists/*_*
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Set build ENV
+ENV MIX_ENV=prod
+
+# Install hex + rebar
+RUN mix local.hex --force && \
+    mix local.rebar --force
+
+# Create app directory
+WORKDIR /app
+
+# Copy mix files
+COPY mix.exs mix.lock ./
+COPY config config
+COPY apps/drone_coordinator/mix.exs ./apps/drone_coordinator/
+COPY apps/web_interface/mix.exs ./apps/web_interface/
+
+# Install mix dependencies
+RUN mix deps.get --only $MIX_ENV
+
+# Copy native code and build Rust
+COPY native native
+RUN cd native/sensor_processor && cargo build --release
+
+# Copy web interface assets configuration
+COPY apps/web_interface/assets/tailwind.config.js ./apps/web_interface/assets/
+COPY apps/web_interface/priv ./apps/web_interface/priv
+
+# Pre-install and cache esbuild and tailwind to avoid long downloads
+ENV ESBUILD_VERSION=0.17.11
+ENV NODE_PATH=/app/assets/node_modules
+RUN mix assets.setup
+
+# Copy source code
+COPY apps apps
+
+# Compile the release
+RUN mix deps.compile
+
+# Build assets with optimizations
+RUN mix assets.deploy
+
+# Build the release
+RUN mix release
+
+# Start a new build stage for the runtime image
+FROM debian:bullseye-slim as runner
+
+RUN apt-get update -y && apt-get install -y libstdc++6 openssl libncurses5 locales \
+  && apt-get clean && rm -f /var/lib/apt/lists/*_*
+
+# Set the locale
+RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
+
+WORKDIR /app
+RUN chown nobody /app
+
+# Set runner ENV
+ENV MIX_ENV=prod
+ENV SECRET_KEY_BASE="ReplaceMe"
+ENV PHX_HOST=localhost
+ENV PHX_PORT=4000
+
+# Only copy the final release from the build stage
+COPY --from=builder --chown=nobody:root /app/_build/prod/rel/lix_flock ./
+
+USER nobody
+
+EXPOSE 4000
+
+CMD ["/app/bin/lix_flock", "start"]
